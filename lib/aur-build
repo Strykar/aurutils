@@ -83,6 +83,11 @@ while true; do
         -R|--remove)        repo_add_args+=(-R) ;;
         --pkgver)           run_pkgver=1
                             makepkg_args+=(--holdver) ;;
+        # expose some common makepkg options
+        --rmdeps)           makepkg_args+=(--rmdeps) ;;
+        --noconfirm)        makepkg_args+=(--noconfirm) ;;
+        --ignorearch)       makepkg_args+=(--ignorearch) ;;
+        --log)              makepkg_args+=(--log) ;;
         --results)          shift; results_file=$1 ;;
         --dump-options) printf -- '--%s\n' "${opt_long[@]}"
                         printf -- '%s' "${opt_short}" | sed 's/.:\?/-&\n/g'
