@@ -7,7 +7,19 @@ readonly XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[1]}(): }'
 
 # default options
-verbose=0 recurse=0 pull_args=('--verbose') confirm_seen=0
+verbose=0 recurse=0 confirm_seen=0 pull_args=('--verbose')
+
+git_clone_set_config() {
+    if git clone "$AUR_LOCATION"/"$1".git; then
+        # Show PKGBUILDs first. (#399)
+        git -C "$1" config diff.orderFile "$2"
+        # Only allow fast-forward fetches. (#552)
+        git -C "$1" config remote.origin.fetch 'refs/heads/*:refs/remotes/origin/*'
+    else
+        error '%s: %s: Failed to clone repository' "$argv0" "$1"
+        exit 1
+    fi
+}
 
 usage() {
     cat <<! | base64 -d
@@ -68,8 +80,8 @@ fi
 mkdir -p "$XDG_CONFIG_HOME/aurutils/$argv0"
 orderfile=$XDG_CONFIG_HOME/aurutils/$argv0/orderfile
 
-if [[ ! -s $orderfile ]]; then
-    printf 'PKGBUILD\n' > "$orderfile"
+if ! [[ -s $orderfile ]]; then
+    printf 'PKGBUILD\n' >"$orderfile"
 fi
 
 if (( recurse )); then
@@ -77,22 +89,17 @@ if (( recurse )); then
 else
    printf '%s\n' "$@"
 fi | while read -r pkg; do
-    if [[ ! -e $pkg ]]; then
-        if git clone "$AUR_LOCATION"/"$pkg".git; then
-            # show PKGBUILDS first (#399)
-            git -C "$pkg" config diff.orderFile "$orderfile"
-            # only allow fast-forward fetches. (#)
-            git -C "$pkg" config remote.origin.fetch 'refs/heads/*:refs/remotes/origin/*'
-        else
-            error '%s: %s: Failed to clone repository' "$argv0" "$pkg"
-            exit 1
-        fi
+    if ! [[ -e $pkg ]]; then
+        git_clone_set_config "$pkg" "$orderfile"
     fi
 
-    # Avoid issues with filesystem boundaries, (#274)
-    # and make sure we have a valid git repository.
-    GIT_DIR=$(git rev-parse --resolve-git-dir "$pkg"/.git) || exit
-    export GIT_DIR GIT_WORK_TREE=$pkg
+    # Ensure a valid git repository. (#586)
+    if GIT_DIR=$(git rev-parse --resolve-git-dir "$pkg"/.git); then
+        # Avoid issues with filesystem boundaries. (#274)
+        export GIT_DIR GIT_WORK_TREE=$pkg
+    else
+        exit 1 # exit 128
+    fi
 
     if (( confirm_seen )); then
         git update-ref AURUTILS_SEEN HEAD
@@ -124,6 +131,8 @@ fi | while read -r pkg; do
             git --no-pager log --patch --stat "$log_range" >"$logfile"
             plain '%s' "$logfile"
         fi
+    else
+        : first inspection # TODO
     fi
 done
 
