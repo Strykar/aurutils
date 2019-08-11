@@ -59,18 +59,16 @@ if ! (( $# )); then
     exit 1
 fi
 
-# Prepare configuration directory.
-mkdir -p "$XDG_CONFIG_HOME"/aurutils/$argv0
-
 # Default to showing PKGBUILD first in patch. (#399)
+mkdir -p "$XDG_CONFIG_HOME/aurutils/$argv0"
 orderfile=$XDG_CONFIG_HOME/aurutils/$argv0/orderfile
 
 if [[ ! -s $orderfile ]]; then
     printf 'PKGBUILD\n' > "$orderfile"
 fi
 
-if ((confirm_seen)); then
-    msg "Marking repositories as seen"
+if (( confirm_seen )); then
+    msg 'Marking repositories as seen'
 fi
 
 if (( recurse )); then
@@ -89,6 +87,7 @@ fi | while read -r pkg; do
             exit 1
         fi
     fi
+
     # Avoid issues with filesystem boundaries, (#274)
     # and make sure we have a valid git repository.
     GIT_DIR=$(git rev-parse --resolve-git-dir "$pkg"/.git) || exit
@@ -107,6 +106,7 @@ fi | while read -r pkg; do
         exit 1
     fi
 
+    # Add marker since last approved (--confirm-seen) changes. (#)
     seen=$(git rev-parse --quiet --verify AURUTILS_SEEN)
 
     if [[ "$seen" != $(git rev-parse HEAD) ]]; then
