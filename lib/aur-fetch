@@ -91,49 +91,60 @@ else
 fi | while read -r pkg; do
     if ! [[ -e $pkg ]]; then
         git_clone_set_config "$pkg" "$orderfile"
-    fi
 
-    # Ensure a valid git repository. (#586)
-    if GIT_DIR=$(git rev-parse --resolve-git-dir "$pkg"/.git); then
-        # Avoid issues with filesystem boundaries. (#274)
-        export GIT_DIR GIT_WORK_TREE=$pkg
-    else
-        exit 1 # exit 128
-    fi
+        if (( confirm_seen )); then
+            git update-ref AURUTILS_SEEN HEAD
 
-    if (( confirm_seen )); then
-        git update-ref AURUTILS_SEEN HEAD
-        msg2 'Marked %s as seen' "$pkg"
-        continue
-    fi
-
-    # Discard any local uncommited changes. (#552)
-    git reset --hard HEAD >&2
-
-    if ! git pull --rebase "${pull_args[@]}"; then
-        error '%s: Failed to integrate changes.' "$pkg"
-        exit 1
-    fi
-
-    # Add marker since last approved (--confirm-seen) changes. (#)
-    seen=$(git rev-parse --quiet --verify AURUTILS_SEEN)
-
-    if [[ "$seen" != $(git rev-parse HEAD) ]]; then
-        log_range="${seen:+$seen..}HEAD"
-
-        if (( verbose )); then
-            git --no-pager log --patch --stat "$log_range"
-        fi
-
-        if [[ $log_dir ]]; then
-            logfile="$log_dir/$pkg".patch
-
-            git --no-pager log --patch --stat "$log_range" >"$logfile"
-            plain '%s' "$logfile"
+            warning 'Marked new repository %s as seen' "$pkg"
+            continue
+        else
+            # This case may be handled differently from an existing repo where
+            # the AURUTILS_SEEN ref does not exist; here, we know that the repo
+            # is at the current HEAD, and a git pull is not required.
+            : cloned repository was not inspected
         fi
     else
-        : first inspection # TODO
+        # Ensure a valid git repository. (#586)
+        if GIT_DIR=$(git rev-parse --resolve-git-dir "$pkg"/.git); then
+            # Avoid issues with filesystem boundaries. (#274)
+            export GIT_DIR GIT_WORK_TREE=$pkg
+        else
+            exit 1 # exit 128
+        fi
+
+        if (( confirm_seen )); then
+            git update-ref AURUTILS_SEEN HEAD
+
+            msg2 'Marked %s as seen' "$pkg"
+            continue
+        fi
+
+        # Discard any local uncommited changes. (#552)
+        git reset --hard HEAD >&2
+
+        if ! git pull --rebase "${pull_args[@]}"; then
+            error '%s: Failed to integrate changes.' "$pkg"
+            exit 1
+        fi
+        
+        # TODO: Case where $seen is empty (see above)
+        seen=$(git rev-parse --quiet --verify AURUTILS_SEEN)
+
+        # directory was inspected at a previous time
+        if [[ $seen != "$(git rev-parse HEAD)" ]]; then
+            # contents have changed since last inspection
+            if (( verbose )); then
+                git --no-pager log --patch --stat "$seen..HEAD"
+            fi
+
+            if [[ $log_dir ]]; then
+                git --no-pager log --patch --stat "$seen..HEAD" >"$log_dir/$pkg".diff
+            fi
+        fi
     fi
+
+    # clean up variables
+    unset GIT_DIR GIT_WORK_TREE
 done
 
 # vim: set et sw=4 sts=4 ft=sh:
