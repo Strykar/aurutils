@@ -89,6 +89,9 @@ if (( recurse )); then
 else
    printf '%s\n' "$@"
 fi | while read -r pkg; do
+    # clean up variables
+    unset GIT_DIR GIT_WORK_TREE
+
     if ! [[ -e $pkg ]]; then
         git_clone_set_config "$pkg" "$orderfile"
 
@@ -109,7 +112,9 @@ fi | while read -r pkg; do
             # Avoid issues with filesystem boundaries. (#274)
             export GIT_DIR GIT_WORK_TREE=$pkg
         else
-            exit 1 # exit 128
+            # The original git rev-parse exit code on a malformed git
+            # repository is 128, or EKEYREVOKED in errno.h.
+            exit 1
         fi
 
         if (( confirm_seen )); then
@@ -126,7 +131,7 @@ fi | while read -r pkg; do
             error '%s: Failed to integrate changes.' "$pkg"
             exit 1
         fi
-        
+
         # TODO: Case where $seen is empty (see above)
         seen=$(git rev-parse --quiet --verify AURUTILS_SEEN)
 
@@ -142,9 +147,6 @@ fi | while read -r pkg; do
             fi
         fi
     fi
-
-    # clean up variables
-    unset GIT_DIR GIT_WORK_TREE
 done
 
 # vim: set et sw=4 sts=4 ft=sh:
