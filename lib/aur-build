@@ -17,8 +17,18 @@ repo_add_args=()
 # default options
 chroot=0 no_sync=0 overwrite=0 sign_pkg=0 run_pkgver=0 results=0
 
+makepkg_defaults() {
+    cat -s /etc/makepkg.conf
+
+    if [[ -r $XDG_CONFIG_HOME/pacman/makepkg.conf ]]; then
+        cat -s "$XDG_CONFIG_HOME"/pacman/makepkg.conf
+    elif [[ -r $HOME/.makepkg.conf ]]; then
+        cat -s "$HOME"/.makepkg.conf
+    fi
+}
+
 conf_single() {
-    awk -v "repo=[$1]" '
+    pacman-conf --config "$1" | awk -v "repo=[$2]" '
     /^\[.*\]$/ {
         do_print = ($1 == "[options]" || $1 == repo)
     }
@@ -52,10 +62,10 @@ if [[ ! -v NO_COLOR ]] && [[ ! -o xtrace ]]; then
 fi
 
 ## option parsing
-opt_short='a:B:C:d:D:M:r:cfNRXsv'
+opt_short='a:B:d:D:r:cfNRXsv'
 opt_long=('arg-file:' 'chroot' 'database:' 'force' 'root:' 'sign'
           'verify' 'directory:' 'no-sync' 'pacman-conf:' 'results:'
-          'makepkg-conf:' 'remove' 'build-command:' 'pkgver')
+          'makepkg-conf:' 'remove' 'build-command:' 'pkgver' 'recreate')
 opt_hidden=('dump-options')
 
 if ! parseopts "$opt_short" "${opt_long[@]}" "${opt_hidden[@]}" -- "$@"; then
@@ -63,35 +73,34 @@ if ! parseopts "$opt_short" "${opt_long[@]}" "${opt_hidden[@]}" -- "$@"; then
 fi
 set -- "${OPTRET[@]}"
 
-unset queue db_name db_path db_root build_cmd m_conf p_conf results_file
+unset queue db_name db_path db_root build_cmd makepkg_conf pacman_conf results_file
 while true; do
     case "$1" in
         -a|--arg-file)      shift; queue=$1 ;;
-        -d|--database)      shift; db_name=$1
-                            chroot_args+=(-d "$1") ;;
+        -B|--build-command) shift; build_cmd+=("$1") ;;
+        -d|--database)      shift; db_name=$1 ;;
+        -D|--directory)     shift; aurbuild_args+=(-r "$1") ;;
         -r|--root)          shift; db_root=$1 ;;
         -c|--chroot)        chroot=1 ;;
         -f|--force)         overwrite=1 ;;
-        -s|--sign)          sign_pkg=1
-                            repo_add_args+=(-s) ;;
-        -v|--verify)        repo_add_args+=(-v) ;;
-        -B|--build-command) shift; build_cmd+=("$1") ;;
-        -D|--directory)     shift; chroot_args+=(-D "$1") ;;
-        -C|--pacman-conf)   shift; chroot_args+=(-C "$1"); p_conf=$1 ;;
-        -M|--makepkg-conf)  shift; chroot_args+=(-M "$1"); m_conf=$1 ;;
         -N|--no-sync)       no_sync=1 ;;
+        -v|--verify)        repo_add_args+=(-v) ;;
         -R|--remove)        repo_add_args+=(-R) ;;
-        --pkgver)           run_pkgver=1
-                            makepkg_args+=(--holdver) ;;
+        -s|--sign)          sign_pkg=1; repo_add_args+=(-s) ;;
+        --pacman-conf)      shift; pacman_conf=$1 ;;
+        --makepkg-conf)     shift; makepkg_conf=$1 ;;
+        --recreate)         aurbuild_args+=(-c) ;;
+        --results)          shift; results_file=$1 ;;
+        --pkgver)           run_pkgver=1; makepkg_args+=(--holdver) ;;
         # expose some common makepkg options
         --rmdeps)           makepkg_args+=(--rmdeps) ;;
         --noconfirm)        makepkg_args+=(--noconfirm) ;;
         --ignorearch)       makepkg_args+=(--ignorearch) ;;
         --log)              makepkg_args+=(--log) ;;
-        --results)          shift; results_file=$1 ;;
-        --dump-options) printf -- '--%s\n' "${opt_long[@]}"
-                        printf -- '%s' "${opt_short}" | sed 's/.:\?/-&\n/g'
-                        exit ;;
+        --dump-options)
+            printf -- '--%s\n' "${opt_long[@]}"
+            printf -- '%s' "${opt_short}" | sed 's/.:\?/-&\n/g'
+            exit ;;
         --) shift; break ;;
     esac
     shift
@@ -148,6 +157,19 @@ if ! [[ -w $db_path ]]; then
     exit 13
 fi
 
+# provisions for symbolic links to /usr/bin/archbuild (#591)
+if (( chroot )); then
+    if ! [[ -x /usr/bin/$dbname-$machine-build ]]; then
+        error "$argv0: archbuild is unavailable for repository $dbname"
+        exit 1
+    fi
+
+    if ! [[ -e /usr/share/devtools/pacman-$dbname.conf ]]; then
+        error "$argv0: pacman-$dbname.conf: no such file or directory"
+        exit 2
+    fi
+fi
+
 if [[ -v queue ]]; then
     exec {fd}< "$queue"
 else
@@ -188,17 +210,15 @@ if ((chroot)); then
 fi
 
 # Configuration for host builds.
-pacman-conf --config "${p_conf:-/etc/pacman.conf}" | conf_single "$db_name" >"$tmp"/custom.conf
+conf_single "$db_name" >"$tmp"/custom.conf
 
-# PKGDEST is defined later through makepkg.conf (#513)
+# PKGDEST is defined below through makepkg.conf (#513)
 unset PKGDEST
 
-{ cat -s "${m_conf:-/etc/makepkg.conf}"
-
-  if [[ -r $XDG_CONFIG_HOME/pacman/makepkg.conf ]]; then
-      cat -s "$XDG_CONFIG_HOME"/pacman/makepkg.conf
-  elif [[ -r $HOME/.makepkg.conf ]]; then
-      cat -s "$HOME"/.makepkg.conf
+{ if [[ -v makepkg_conf ]]; then
+      cat -s "$makepkg_conf"
+  else
+      makepkg_defaults
   fi
 
   # PKGDEST defined here is NOT exported to the build environment.
@@ -234,9 +254,11 @@ while IFS= read -ru "$fd" path; do
     if [[ -v build_cmd ]]; then
         printf '%s\n' >&2 "Running custom command: ${build_cmd[*]}"
         env PKGDEST="$var_tmp" AUR_REPO="$db_name" AUR_DBROOT="$db_root" "${build_cmd[@]}"
-    elif ((chroot)); then
-        printf '%s\n' >&2 "Running makechrootpkg ${makechrootpkg_args[*]}"
-        env PKGDEST="$var_tmp" aur chroot --no-prepare "${chroot_args[@]}" -- "${makechrootpkg_args[@]}"
+    elif (( chroot )); then
+        # XXX: makechrootpkg arguments are _appended_ to defaults (-c -n)
+        printf '%s\n' >&2 "Running $db_name-$machine-build"
+        env PKGDEST="$var_tmp" "$db_name"-"$machine"-build "${aurbuild_args[@]}" \
+            -- -d "$db_root" "${makechrootpkg_args[@]}"
     else
         printf '%s\n' >&2 "Running makepkg ${makepkg_args[*]}"
 

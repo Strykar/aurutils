@@ -7,10 +7,7 @@ readonly AUR_LOCATION=${AUR_LOCATION:-'https://aur.archlinux.org'}
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 
 # default options
-delay=300
-mode=plain
-pkglist=packages
-update=0
+delay=300 mode=plain pkglist=packages update=0
 
 extract_date() {
     sed -n '1p' "$1" | awk -F', ' '{print $3}'

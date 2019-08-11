@@ -44,7 +44,7 @@ num_procs=$(("$(nproc)" + 2))
 
 while true; do
     case "$1" in
-        --noprepare|--no-prepare)
+        --noprepare)
             makepkg_args+=(--noprepare) ;;
         -j|--jobs)
             shift; num_procs=$1 ;;
