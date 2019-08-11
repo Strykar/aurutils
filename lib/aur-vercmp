@@ -5,8 +5,7 @@ readonly argv0=vercmp
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 
 # default options
-format=check
-target=aur
+format=check target=aur
 
 cmp_equal_or_newer() {
     local pkg v_cmp v_in op
@@ -36,7 +35,12 @@ cmp_checkupdates() {
             *) op=$(my_vercmp "$v_in" "$v_cmp") ;;
         esac
 
-        if ! ((all)) && ((op > -1)); then
+        if ! (( all )) && (( op > -1 )); then
+            continue
+        fi
+
+        if (( quiet )); then
+            printf '%s\n' "$pkg"
             continue
         fi
 
@@ -88,12 +92,12 @@ if ! parseopts "$opt_short" "${opt_long[@]}" "${opt_hidden[@]}" -- "$@"; then
 fi
 set -- "${OPTRET[@]}"
 
-unset all aux repo upair
+unset all aux quiet repo upair
 while true; do
     case "$1" in
         -a|--all)   all=1 ;;
         -c|--current) format=equal ;;
-        -q|--quiet) format=quiet ;;
+        -q|--quiet) quiet=1 ;;
         -p|--path)  shift; target='file'
                     aux=$1 ;;
         -u|--upair) shift; upair=$1 ;;
@@ -126,10 +130,8 @@ esac
 
 # set filters (2)
 case $format in
-    check) cmp() { cmp_checkupdates "${all-0}"; }
+    check) cmp() { cmp_checkupdates "${all-0}" "${quiet-0}"; }
            upair=${upair-1} ;; # join unpaired of target
-    quiet) cmp() { cmp_checkupdates "${all-0}" | cut -d: -f1; }
-           upair=${upair-1} ;;
     equal) cmp() { cmp_equal_or_newer; }
            upair=${upair-2} ;; # join unpaired of input
 esac
