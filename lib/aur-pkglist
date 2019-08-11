@@ -1,5 +1,6 @@
 #!/bin/bash
 # aur-pkglist - print the AUR package list
+[[ -v AUR_DEBUG ]] && set -o xtrace
 set -o pipefail
 readonly argv0=pkglist
 readonly cache=${XDG_CACHE_HOME:-$HOME/.cache}/aurutils/$argv0

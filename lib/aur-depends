@@ -1,5 +1,6 @@
 #!/bin/bash
 # aur-depends - retrieve package dependencies using AurJson
+[[ -v AUR_DEBUG ]] && set -o xtrace
 readonly argv0=depends
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 readonly max_request=30
@@ -66,7 +67,7 @@ order() {
 }
 
 trap_exit() {
-    if [[ ! -o xtrace ]]; then
+    if [[ ! -v AUR_DEBUG ]]; then
         rm -rf "$tmp"
     fi
 }

@@ -1,5 +1,6 @@
 #!/bin/bash
 # aur-fetch - retrieve build files from the AUR
+[[ -v AUR_DEBUG ]] && set -o xtrace
 readonly argv0=fetch
 readonly AUR_LOCATION=${AUR_LOCATION:-https://aur.archlinux.org}
 readonly XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
@@ -24,7 +25,7 @@ XyAgICAgIDsnflUnCiAgXywtJyAsJ2AtX187ICctLS4KIChfLyd+fiAgICAgICcnJycoOwoK
 source /usr/share/makepkg/util/message.sh
 source /usr/share/makepkg/util/parseopts.sh
 
-if [[ ! -v NO_COLOR ]] && [[ ! -o xtrace ]]; then
+if [[ ! -v NO_COLOR ]] && [[ ! -v AUR_DEBUG ]]; then
     [[ -t 2 ]] && colorize
 fi
 

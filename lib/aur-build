@@ -1,5 +1,6 @@
 #!/bin/bash
 # aur-build - build packages to a local repository
+[[ -v AUR_DEBUG ]] && set -o xtrace
 set -o errexit
 shopt -s extglob
 readonly argv0=build
@@ -33,7 +34,7 @@ db_replaces() {
 }
 
 trap_exit() {
-    if ! [[ -o xtrace ]]; then
+    if [[ ! -v AUR_DEBUG ]]; then
         rm -rf "$tmp" "$var_tmp"
     fi
 }
@@ -47,7 +48,7 @@ source /usr/share/makepkg/util/util.sh
 source /usr/share/makepkg/util/message.sh
 source /usr/share/makepkg/util/parseopts.sh
 
-if [[ ! -v NO_COLOR ]] && [[ ! -o xtrace ]]; then
+if [[ ! -v NO_COLOR ]] && [[ ! -v AUR_DEBUG ]]; then
     [[ -t 2 ]] && colorize
 fi
 
@@ -234,11 +235,7 @@ while IFS= read -ru "$fd" path; do
         env PKGDEST="$var_tmp" aur chroot --no-prepare "${chroot_args[@]}" -- "${makechrootpkg_args[@]}"
     else
         printf '%s\n' >&2 "Running makepkg ${makepkg_args[*]}"
-
-        # unset SHELLOPTS due to odd behavior with fakeroot (a /bin/sh
-        # script) when it is set in the environment. see:
-        # https://lists.gnu.org/archive/html/bug-bash/2011-10/msg00052.html
-        env -u SHELLOPTS makepkg --config "$tmp"/makepkg.conf "${makepkg_args[@]}"
+        makepkg --config "$tmp"/makepkg.conf "${makepkg_args[@]}"
     fi
 
     cd_safe "$var_tmp"

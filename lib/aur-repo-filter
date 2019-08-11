@@ -1,5 +1,6 @@
 #!/bin/bash
 # aur-repo-filter - filter packages in the Arch Linux repositories
+[[ -v AUR_DEBUG ]] && set -o xtrace
 readonly argv0=repo-filter
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 readonly arch_repo=(core extra testing community{,-testing} multilib{,-testing})
