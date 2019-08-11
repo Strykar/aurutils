@@ -12,9 +12,9 @@ machine=$(uname -m)
 readonly machine
 
 # default arguments
-chroot_args=()
+aurbuild_args=()
 gpg_args=(--detach-sign --no-armor --batch)
-makechrootpkg_args=(-cu)
+makechrootpkg_args=()
 makepkg_args=(--clean --syncdeps)
 repo_add_args=()
 
@@ -53,7 +53,7 @@ trap_exit() {
 }
 
 usage() {
-    plain 'usage: %s [-d repo] [-aCDMr path] [-cfNRXsv] [--] <makepkg args>' "$argv0" >&2
+    plain >&2 'usage: %s [-d repo] [-aCDMr path] [-cfNRXsv] [--] <makepkg args>' "$argv0"
     exit 1
 }
 
@@ -66,7 +66,7 @@ if [[ ! -v NO_COLOR ]] && [[ ! -o xtrace ]]; then
 fi
 
 ## option parsing
-opt_short='a:B:d:D:r:cfNRXsv'
+opt_short='a:B:d:D:r:AcfLnNRXsv'
 opt_long=('arg-file:' 'chroot' 'database:' 'force' 'root:' 'sign'
           'verify' 'directory:' 'no-sync' 'pacman-conf:' 'results:'
           'makepkg-conf:' 'remove' 'build-command:' 'pkgver' 'recreate')
@@ -84,7 +84,6 @@ while true; do
         -B|--build-command) shift; build_cmd+=("$1") ;;
         -d|--database)      shift; db_name=$1 ;;
         -D|--directory)     shift; aurbuild_args+=(-r "$1") ;;
-        -r|--root)          shift; db_root=$1 ;;
         -c|--chroot)        chroot=1 ;;
         -f|--force)         overwrite=1 ;;
         -N|--no-sync)       no_sync=1 ;;
@@ -93,14 +92,15 @@ while true; do
         -s|--sign)          sign_pkg=1; repo_add_args+=(-s) ;;
         --pacman-conf)      shift; pacman_conf=$1 ;;
         --makepkg-conf)     shift; makepkg_conf=$1 ;;
-        --recreate)         aurbuild_args+=(-c) ;;
         --results)          shift; results_file=$1 ;;
+        --root)             shift; db_root=$1 ;;
+        --recreate)         aurbuild_args+=(-c) ;;
         --pkgver)           run_pkgver=1; makepkg_args+=(--holdver) ;;
-        # expose some common makepkg options
-        --rmdeps)           makepkg_args+=(--rmdeps) ;;
-        --noconfirm)        makepkg_args+=(--noconfirm) ;;
-        --ignorearch)       makepkg_args+=(--ignorearch) ;;
-        --log)              makepkg_args+=(--log) ;;
+        # expose some common makepkg options (cf. aur-sync)
+        -r|--rmdeps)        makepkg_args+=(--rmdeps) ;;
+        -n|--noconfirm)     makepkg_args+=(--noconfirm) ;;
+        -A|--ignorearch)    makepkg_args+=(--ignorearch) ;;
+        -L|--log)           makepkg_args+=(--log) ;;
         --dump-options)
             printf -- '--%s\n' "${opt_long[@]}"
             printf -- '%s' "${opt_short}" | sed 's/.:\?/-&\n/g'
@@ -118,7 +118,7 @@ trap 'exit' INT
 
 # reset default makechrootpkg arguments
 if (($#)); then
-    if ((chroot)); then
+    if (( chroot )); then
         makechrootpkg_args=("$@")
     else
         makepkg_args=("$@")
@@ -164,12 +164,12 @@ fi
 # provisions for symbolic links to /usr/bin/archbuild (#591)
 if (( chroot )); then
     if ! [[ -x /usr/bin/$db_name-$machine-build ]]; then
-        error "$argv0: archbuild is unavailable for repository $db_name"
+        error >&2 "$argv0: archbuild is unavailable for repository $db_name"
         exit 1
     fi
 
     if ! [[ -e /usr/share/devtools/pacman-$db_name.conf ]]; then
-        error "$argv0: pacman-$db_name.conf: no such file or directory"
+        error >&2 "$argv0: pacman-$db_name.conf: no such file or directory"
         exit 2
     fi
 fi
@@ -196,7 +196,8 @@ if ((sign_pkg)); then
         gpg_args+=(-u "$GPGKEY")
     fi
 else
-    db_sigs=("$db_root/$db_name".sig "$db_root/$db_name".files.sig)
+    db_sigs=("$db_root/$db_name".sig
+             "$db_root/$db_name".files.sig)
 
     if [[ -f ${db_sigs[0]} ]]; then
         error '%s: database signature found, but signing is disabled' "$argv0"
@@ -204,13 +205,6 @@ else
         printf '%q\n' >&2 "${db_sigs[@]}"
         exit 1
     fi
-fi
-
-# Configuration for container builds. This step is run before the
-# build to save time when the (root) container has not been updated
-# for a longer period of time.
-if ((chroot)); then
-    aur chroot --no-build "${chroot_args[@]}"
 fi
 
 # Configuration for host builds.
@@ -235,12 +229,12 @@ while IFS= read -ru "$fd" path; do
     cd_safe "$startdir/$path"
 
     # run pkgver before --packagelist (#500)
-    if ((run_pkgver)); then
+    if (( run_pkgver )); then
         # ignore architecture in pkgver() function (#536)
         makepkg --noprepare -od --ignorearch
     fi
 
-    if ! ((overwrite)); then
+    if ! (( overwrite )); then
         unset mark
 
         while IFS= read -r; do
@@ -255,11 +249,12 @@ while IFS= read -ru "$fd" path; do
         fi
     fi
 
+    # XXX: makechrootpkg arguments are _appended_ to defaults (-c -n)
+    # defined in extra-x86_64-build
     if [[ -v build_cmd ]]; then
         printf '%s\n' >&2 "Running custom command: ${build_cmd[*]}"
         env PKGDEST="$var_tmp" AUR_REPO="$db_name" AUR_DBROOT="$db_root" "${build_cmd[@]}"
     elif (( chroot )); then
-        # XXX: makechrootpkg arguments are _appended_ to defaults (-c -n)
         printf '%s\n' >&2 "Running $db_name-$machine-build"
         env PKGDEST="$var_tmp" "$db_name"-"$machine"-build "${aurbuild_args[@]}" \
             -- -d "$db_root" "${makechrootpkg_args[@]}"
@@ -287,7 +282,7 @@ while IFS= read -ru "$fd" path; do
             warning '%s: existing package signature found' "$argv0"
             siglist+=("$p".sig)
 
-        elif ((sign_pkg)); then
+        elif (( sign_pkg )); then
             gpg "${gpg_args[@]}" --output "$p".sig "$p"
             siglist+=("$p".sig)
         fi
@@ -300,11 +295,11 @@ while IFS= read -ru "$fd" path; do
     cd_safe "$db_root"
     LANG=C repo-add "${repo_add_args[@]}" "$db_path" "${pkglist[@]}"
 
-    if ((results)); then
+    if (( results )); then
         printf '%s\n' "${pkglist[@]}" | tee -a "$results_file"
     fi
 
-    if ((chroot)) || ((no_sync)); then
+    if (( chroot )) || (( no_sync )); then
         continue
     else
         replaces=$(grep -Fxf <(db_replaces "$db_path") <(pacman -Qq) | paste -s -d, -)
