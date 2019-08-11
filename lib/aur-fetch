@@ -6,7 +6,7 @@ readonly XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[1]}(): }'
 
 # default options
-verbose=0 recurse=0 fetch_args=('--verbose') confirm_seen=0
+verbose=0 recurse=0 pull_args=('--verbose') confirm_seen=0
 
 usage() {
     cat <<! | base64 -d
@@ -39,7 +39,7 @@ while true; do
         -L|--write-log) shift; log_dir=$1 ;;
         -r|--recurse)   recurse=1 ;;
         -v|--verbose)   verbose=1 ;;
-        --force)        fetch_args+=('--force') ;;
+        --force)        pull_args+=('--force') ;;
         --confirm-seen) confirm_seen=1 ;;
         --dump-options) printf -- '--%s\n' "${opt_long[@]}" ;
                         printf -- '%s' "${opt_short}" | sed 's/.:\?/-&\n/g' ;
@@ -59,16 +59,16 @@ if ! (( $# )); then
     exit 1
 fi
 
+if (( confirm_seen )); then
+    msg 'Marking repositories as seen'
+fi
+
 # Default to showing PKGBUILD first in patch. (#399)
 mkdir -p "$XDG_CONFIG_HOME/aurutils/$argv0"
 orderfile=$XDG_CONFIG_HOME/aurutils/$argv0/orderfile
 
 if [[ ! -s $orderfile ]]; then
     printf 'PKGBUILD\n' > "$orderfile"
-fi
-
-if (( confirm_seen )); then
-    msg 'Marking repositories as seen'
 fi
 
 if (( recurse )); then
@@ -101,7 +101,8 @@ fi | while read -r pkg; do
 
     # Discard any local uncommited changes. (#552)
     git reset --hard HEAD >&2
-    if ! git pull --rebase "${fetch_args[@]}"; then
+
+    if ! git pull --rebase "${pull_args[@]}"; then
         error '%s: Failed to integrate changes.' "$pkg"
         exit 1
     fi

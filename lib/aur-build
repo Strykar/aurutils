@@ -7,6 +7,10 @@ readonly startdir=$PWD
 readonly XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 
+# hardware name
+machine=$(uname -m)
+readonly machine
+
 # default arguments
 chroot_args=()
 gpg_args=(--detach-sign --no-armor --batch)
@@ -159,13 +163,13 @@ fi
 
 # provisions for symbolic links to /usr/bin/archbuild (#591)
 if (( chroot )); then
-    if ! [[ -x /usr/bin/$dbname-$machine-build ]]; then
-        error "$argv0: archbuild is unavailable for repository $dbname"
+    if ! [[ -x /usr/bin/$db_name-$machine-build ]]; then
+        error "$argv0: archbuild is unavailable for repository $db_name"
         exit 1
     fi
 
-    if ! [[ -e /usr/share/devtools/pacman-$dbname.conf ]]; then
-        error "$argv0: pacman-$dbname.conf: no such file or directory"
+    if ! [[ -e /usr/share/devtools/pacman-$db_name.conf ]]; then
+        error "$argv0: pacman-$db_name.conf: no such file or directory"
         exit 2
     fi
 fi
@@ -210,7 +214,7 @@ if ((chroot)); then
 fi
 
 # Configuration for host builds.
-conf_single "$db_name" >"$tmp"/custom.conf
+conf_single "${pacman_conf:-/etc/pacman.conf}" "$db_name" >"$tmp"/custom.conf
 
 # PKGDEST is defined below through makepkg.conf (#513)
 unset PKGDEST
