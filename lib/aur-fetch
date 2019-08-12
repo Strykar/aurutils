@@ -96,11 +96,14 @@ fi | while read -r pkg; do
         git_clone_set_config "$pkg" "$orderfile"
 
         if (( confirm_seen )); then
-            git update-ref AURUTILS_SEEN HEAD
+            git -C "$pkg" update-ref AURUTILS_SEEN HEAD
 
             warning 'Marked new repository %s as seen' "$pkg"
-            continue
+            continue # skip diff logic
         else
+            # Set marker to empty tree object.
+            git -C "$pkg" update-ref AURUTILS_SEEN 4b825dc642cb6eb9a060e54bf8d69288fbee4904
+
             # This case may be handled differently from an existing repo where
             # the AURUTILS_SEEN ref does not exist; here, we know that the repo
             # is at the current HEAD, and a git pull is not required.
@@ -131,25 +134,24 @@ fi | while read -r pkg; do
             error '%s: Failed to integrate changes.' "$pkg"
             exit 1
         fi
+    fi
 
-        seen=$(git rev-parse --quiet --verify AURUTILS_SEEN)
+    seen=$(git rev-parse --quiet --verify AURUTILS_SEEN)
 
-        # Directory was not inspected (or was inspected without our knowledge),
-        # with possible new commits from 'git pull' above.
-        if [[ -z $seen ]]; then
-            seen=$(git rev-parse '@{upstream}')
+    if [[ -z $seen ]]; then
+        seen=4b825dc642cb6eb9a060e54bf8d69288fbee4904
+        warning '%s: AURUTILS_SEEN object not found, assuming empty tree' "$argv0"
+    fi
+
+    # Directory was inspected (--confirm-seen) at a previous time.
+    if [[ $seen != "$(git rev-parse HEAD)" ]]; then
+        # Contents have changed since last inspection, print differences.
+        if (( verbose )); then
+            git --no-pager log --patch --stat "$seen..HEAD"
         fi
 
-        # directory was inspected (--confirm-seen) at a previous time
-        if [[ $seen != "$(git rev-parse HEAD)" ]]; then
-            # contents have changed since last inspection
-            if (( verbose )); then
-                git --no-pager log --patch --stat "$seen..HEAD"
-            fi
-
-            if [[ $log_dir ]]; then
-                git --no-pager log --patch --stat "$seen..HEAD" >"$log_dir/$pkg".diff
-            fi
+        if [[ $log_dir ]]; then
+            git --no-pager log --patch --stat "$seen..HEAD" >"$log_dir/$pkg".diff
         fi
     fi
 done
