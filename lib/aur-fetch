@@ -132,10 +132,15 @@ fi | while read -r pkg; do
             exit 1
         fi
 
-        # TODO: Case where $seen is empty (see above)
         seen=$(git rev-parse --quiet --verify AURUTILS_SEEN)
 
-        # directory was inspected at a previous time
+        # Directory was not inspected (or was inspected without our knowledge),
+        # with possible new commits from 'git pull' above.
+        if [[ -z $seen ]]; then
+            seen=$(git rev-parse '@{upstream}')
+        fi
+
+        # directory was inspected (--confirm-seen) at a previous time
         if [[ $seen != "$(git rev-parse HEAD)" ]]; then
             # contents have changed since last inspection
             if (( verbose )); then
