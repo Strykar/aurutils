@@ -72,7 +72,7 @@ trap_exit() {
 }
 
 usage() {
-    plain >&2 'usage: %s [-d repo] [-CDM path] [-AcfkLnpPsTu] [--] pkgname...' "$argv0"
+    plain 'usage: %s [-d repo] [-CDM path] [-AcfkLnpPsTu] [--] pkgname...' "$argv0" >&2
     exit 1
 }
 
@@ -196,7 +196,7 @@ if [[ -s argv ]]; then
     # $1 pkgname $2 depends $3 pkgbase $4 pkgver
     xargs --arg-file=argv aur depends --table >depends
 else
-    plain >&2 "there is nothing to do"
+    plain "there is nothing to do" >&2
     exit
 fi
 
@@ -204,7 +204,7 @@ fi
 cut -f2 --complement depends | sort -u >pkginfo
 
 { if (( ${#pkg_i[@]} )); then
-      warning >&2 "$argv0: ignoring %s package" "${pkg_i[@]}"
+      warning "$argv0: ignoring %s package" "${pkg_i[@]}"
       printf '%s\n' "${pkg_i[@]}"
   fi
 
@@ -243,7 +243,7 @@ cut -f1,2 pkginfo | select_pkgbase - queue_1 >queue
 if [[ -s queue ]]; then
     cd_safe "$AURDEST"
 else
-    plain >&2 "there is nothing to do"
+    plain "there is nothing to do" >&2
     exit
 fi
 

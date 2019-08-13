@@ -64,7 +64,7 @@ if ! (( $# )); then
 fi
 
 if (( confirm_seen )); then
-    msg 'Marking repositories as seen'
+    msg 'Marking repositories as seen' >&2
 fi
 
 # Default to showing PKGBUILD first in patch. (#399)
@@ -120,7 +120,7 @@ fi | while read -r pkg; do
         if (( confirm_seen )); then
             git update-ref AURUTILS_SEEN HEAD
 
-            msg2 'Marked %s as seen' "$pkg"
+            msg2 'Marked %s as seen' "$pkg" >&2
             continue
         fi
 

@@ -1,6 +1,5 @@
 #!/bin/bash
 # aur-build - build packages to a local repository
-[[ -v AUR_DEBUG ]] && set -o xtrace
 set -o errexit
 shopt -s extglob
 readonly argv0=build
@@ -8,7 +7,7 @@ readonly startdir=$PWD
 readonly XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 
-# hardware name
+# hardware nam
 machine=$(uname -m)
 readonly machine
 
@@ -54,7 +53,7 @@ trap_exit() {
 }
 
 usage() {
-    plain 'usage: %s [-d repo] [-aCDMr path] [-cfNRXsv] [--] <makepkg args>' "$argv0" >&2
+    plain >&2 'usage: %s [-d repo] [-aCDMr path] [-cfNRXsv] [--] <makepkg args>' "$argv0"
     exit 1
 }
 
@@ -165,12 +164,12 @@ fi
 # provisions for symbolic links to /usr/bin/archbuild (#591)
 if (( chroot )); then
     if ! [[ -x /usr/bin/$db_name-$machine-build ]]; then
-        error '%s: archbuild is unavailable for repository %s' "$argv0" "$db_name"
+        error >&2 "$argv0: archbuild is unavailable for repository $db_name"
         exit 1
     fi
 
     if ! [[ -e /usr/share/devtools/pacman-$db_name.conf ]]; then
-        error '%s: pacman-%s.conf: no such file or directory' "$argv0" "$db_name"
+        error >&2 "$argv0: pacman-$db_name.conf: no such file or directory"
         exit 2
     fi
 fi
@@ -261,7 +260,11 @@ while IFS= read -ru "$fd" path; do
             -- -d "$db_root" "${makechrootpkg_args[@]}"
     else
         printf '%s\n' >&2 "Running makepkg ${makepkg_args[*]}"
-        makepkg --config "$tmp"/makepkg.conf "${makepkg_args[@]}"
+
+        # unset SHELLOPTS due to odd behavior with fakeroot (a /bin/sh
+        # script) when it is set in the environment. see:
+        # https://lists.gnu.org/archive/html/bug-bash/2011-10/msg00052.html
+        env -u SHELLOPTS makepkg --config "$tmp"/makepkg.conf "${makepkg_args[@]}"
     fi
 
     cd_safe "$var_tmp"
