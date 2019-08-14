@@ -148,7 +148,7 @@ fi | while read -r pkg; do
         fi
 
         if [[ $log_dir ]]; then
-            git --no-pager log --patch --stat "{$seen:+$seen..}HEAD" >"$log_dir/$pkg".diff
+            git --no-pager log --patch --stat "${seen:+$seen..}HEAD" >"$log_dir/$pkg".diff
         fi
     fi
 done
