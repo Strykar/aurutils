@@ -16,7 +16,7 @@ completion:
 	@$(MAKE) -C completions bash zsh
 
 shellcheck: aur
-	@shellcheck -x -f gcc -e 2094,2035,2086,2016,1071 aur lib/*
+	@shellcheck -x -f gcc -e 1071 aur lib/*
 
 install-aur: aur
 	@install -Dm755 aur       -t '$(DESTDIR)$(BINDIR)'

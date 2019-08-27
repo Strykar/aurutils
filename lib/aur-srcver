@@ -4,6 +4,7 @@ readonly argv0=srcver
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }'
 
 srcver_pkgbuild_info() {
+    # shellcheck disable=SC2016
     env -C "$1" -i bash -c '
         PATH= source PKGBUILD
 

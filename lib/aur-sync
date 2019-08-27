@@ -192,6 +192,7 @@ fi
 } >argv
 
 if [[ -s argv ]]; then
+    # shellcheck disable=SC2094
     # $1 pkgname $2 depends $3 pkgbase $4 pkgver
     xargs --arg-file=argv aur depends --table >depends
 else
