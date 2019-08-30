@@ -6,8 +6,11 @@ readonly AUR_LOCATION=${AUR_LOCATION:-https://aur.archlinux.org}
 readonly XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-$HOME/.config}
 readonly PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[1]}(): }'
 
+# default arguments
+pull_args=('--verbose')
+
 # default options
-verbose=0 recurse=0 confirm_seen=0 pull_args=('--verbose')
+verbose=0 recurse=0 confirm_seen=0 rebase=0 rebase_if=1
 
 # empty tree object
 git_empty_tree=$(git hash-object -t tree /dev/null)
@@ -28,8 +31,9 @@ if [[ ! -v NO_COLOR ]] && [[ ! -o xtrace ]]; then
     [[ -t 2 ]] && colorize
 fi
 
-opt_short='rvL:'
-opt_long=('recurse' 'verbose' 'write-log:' 'force' 'confirm-seen')
+opt_short='frRvL:'
+opt_long=('recurse' 'verbose' 'write-log:' 'force' 'confirm-seen'
+          'rebase' 'reset')
 opt_hidden=('dump-options')
 
 if ! parseopts "$opt_short" "${opt_long[@]}" "${opt_hidden[@]}" -- "$@"; then
@@ -43,7 +47,9 @@ while true; do
         -L|--write-log) shift; log_dir=$1 ;;
         -r|--recurse)   recurse=1 ;;
         -v|--verbose)   verbose=1 ;;
-        --force)        pull_args+=('--force') ;;
+        -f|--force)     pull_args+=('--force') ;;
+        -R|--rebase)    rebase=1 ;;
+        --reset)        rebase=0; rebase_if=0 ;;
         --confirm-seen) confirm_seen=1 ;;
         --dump-options) printf -- '--%s\n' "${opt_long[@]}" ;
                         printf -- '%s' "${opt_short}" | sed 's/.:\?/-&\n/g' ;
@@ -84,16 +90,13 @@ fi | while read -r pkg; do
     export GIT_DIR=$pkg/.git GIT_WORK_TREE=$pkg
 
     if ! [[ -e $pkg ]]; then
-        if ! git clone "$AUR_LOCATION/$pkg".git "$pkg"/.git; then
-            error '%s: %s: Failed to clone repository' "$argv0" "$1"
+        if ! git clone "$AUR_LOCATION/$pkg".git "$GIT_DIR"; then
+            error '%s: %s: Failed to clone repository' "$argv0" "$pkg"
             exit 1
         fi
 
         # Show PKGBUILDs first. (#399)
         git config diff.orderFile "$orderfile"
-
-        # Only allow fast-forward fetches. (#552)
-        git config remote.origin.fetch 'refs/heads/*:refs/remotes/origin/*'
 
         if (( confirm_seen )); then
             git update-ref AURUTILS_SEEN HEAD
@@ -117,6 +120,9 @@ fi | while read -r pkg; do
             exit 1
         fi
 
+        # Only allow fast-forward fetches. (#552)
+        git config remote.origin.fetch 'refs/heads/*:refs/remotes/origin/*'
+
         if (( confirm_seen )); then
             git update-ref AURUTILS_SEEN HEAD
 
@@ -124,12 +130,16 @@ fi | while read -r pkg; do
             continue
         fi
 
-        # Discard any local uncommited changes. (#552)
-        git reset --hard HEAD >&2
+        if (( rebase )) || { (( rebase_if )) && git config --get --bool aurutils.rebase; }; then
+            git reset --hard HEAD >&2
 
-        if ! git pull --rebase "${pull_args[@]}"; then
-            error '%s: Failed to integrate changes.' "$pkg"
-            exit 1
+            if ! git pull --rebase "${pull_args[@]}"; then
+                error '%s: %s: Failed to integrate changes' "$argv0" "$pkg"
+                exit 1
+            fi
+        else
+            git fetch -v >&2
+            git reset --hard HEAD@{upstream} >&2
         fi
     fi
 
@@ -142,7 +152,7 @@ fi | while read -r pkg; do
 
     # Directory was inspected (--confirm-seen) at a previous time.
     if [[ $seen != "$(git rev-parse HEAD)" ]]; then
-        # Contents have changed since last inspection, print differences.
+        # Contents have changed since last inspection; print differences.
         if (( verbose )); then
             git --no-pager log --patch --stat "${seen:+$seen..}HEAD"
         fi
