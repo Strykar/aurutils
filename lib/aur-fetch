@@ -120,9 +120,6 @@ fi | while read -r pkg; do
             exit 1
         fi
 
-        # Only allow fast-forward fetches. (#552)
-        git config remote.origin.fetch 'refs/heads/*:refs/remotes/origin/*'
-
         if (( confirm_seen )); then
             git update-ref AURUTILS_SEEN HEAD
 
