@@ -66,8 +66,9 @@ order() {
 }
 
 trap_exit() {
-    if [[ ! -o xtrace ]]; then
-        rm -rf "$tmp" "$tmp_view"
+    # Do not remove error files if an error occured (#593)
+    if (( ! $? )) && [[ ! -v AUR_DEBUG ]]; then
+        rm -rf "$tmp" "$var_tmp"
     fi
 }
 

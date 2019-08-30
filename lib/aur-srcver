@@ -19,8 +19,9 @@ srcver_pkgbuild_info() {
 }
 
 trap_exit() {
-    if ! [[ -o xtrace ]]; then
-        rm -rf "$tmp"
+    # Do not remove error files if an error occured (#593)
+    if (( ! $? )) && [[ ! -v AUR_DEBUG ]]; then
+        rm -rf "$tmp" "$var_tmp"
     fi
 }
 
