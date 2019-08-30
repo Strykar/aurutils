@@ -48,7 +48,8 @@ db_replaces() {
 }
 
 trap_exit() {
-    if ! [[ -o xtrace ]]; then
+    # Do not remove error files if an error occured (#593)
+    if (( ! $? )) && [[ ! -v AUR_DEBUG ]]; then
         rm -rf "$tmp" "$var_tmp"
     fi
 }
@@ -118,7 +119,7 @@ trap 'trap_exit' EXIT
 trap 'exit' INT
 
 # reset default makechrootpkg arguments
-if (($#)); then
+if (( $# )); then
     if (( chroot )); then
         makechrootpkg_args=("$@")
     else
@@ -191,7 +192,7 @@ if [[ -v results_file ]]; then
     fi
 fi
 
-if ((sign_pkg)); then
+if (( sign_pkg )); then
     if [[ -v GPGKEY ]]; then
         gpg --list-keys "$GPGKEY"
         gpg_args+=(-u "$GPGKEY")
