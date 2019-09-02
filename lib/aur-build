@@ -13,7 +13,7 @@ machine=$(uname -m)
 readonly machine
 
 # default arguments
-aurbuild_args=()
+archbuild_args=()
 gpg_args=(--detach-sign --no-armor --batch)
 makechrootpkg_args=()
 makepkg_args=(--clean --syncdeps)
@@ -85,7 +85,7 @@ while true; do
         -a|--arg-file)      shift; queue=$1 ;;
         -B|--build-command) shift; build_cmd+=("$1") ;;
         -d|--database)      shift; db_name=$1 ;;
-        -D|--directory)     shift; aurbuild_args+=(-r "$1") ;;
+        -D|--directory)     shift; archbuild_args+=(-r "$1") ;;
         -c|--chroot)        chroot=1 ;;
         -f|--force)         overwrite=1 ;;
         -N|--no-sync)       no_sync=1 ;;
@@ -96,7 +96,7 @@ while true; do
         --makepkg-conf)     shift; makepkg_conf=$1 ;;
         --results)          shift; results_file=$1 ;;
         --root)             shift; db_root=$1 ;;
-        --recreate)         aurbuild_args+=(-c) ;;
+        --recreate)         archbuild_args+=(-c) ;;
         --pkgver)           run_pkgver=1; makepkg_args+=(--holdver) ;;
         # expose some common makepkg options (cf. aur-sync)
         -r|--rmdeps)        makepkg_args+=(--rmdeps) ;;
@@ -258,7 +258,7 @@ while IFS= read -ru "$fd" path; do
         env PKGDEST="$var_tmp" AUR_REPO="$db_name" AUR_DBROOT="$db_root" "${build_cmd[@]}"
     elif (( chroot )); then
         printf '%s\n' >&2 "Running $db_name-$machine-build"
-        env PKGDEST="$var_tmp" "$db_name"-"$machine"-build "${aurbuild_args[@]}" \
+        env PKGDEST="$var_tmp" "$db_name"-"$machine"-build "${archbuild_args[@]}" \
             -- -d "$db_root" "${makechrootpkg_args[@]}"
     else
         printf '%s\n' >&2 "Running makepkg ${makepkg_args[*]}"
