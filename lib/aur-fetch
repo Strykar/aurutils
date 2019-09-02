@@ -138,7 +138,7 @@ fi | while read -r pkg; do
             fi
         else
             git fetch -v >&2
-            git reset --hard HEAD@{upstream} >&2
+            git reset --hard 'HEAD@{upstream}' >&2
         fi
     fi
 

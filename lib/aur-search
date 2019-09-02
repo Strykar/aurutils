@@ -99,7 +99,7 @@ info_short() {
 trap_exit() {
     # Do not remove error files if an error occured (#593)
     if (( ! $? )) && [[ ! -v AUR_DEBUG ]]; then
-        rm -rf "$tmp" "$var_tmp"
+        rm -rf "$tmp"
     fi
 }
 

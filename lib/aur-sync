@@ -68,7 +68,7 @@ order() {
 trap_exit() {
     # Do not remove error files if an error occured (#593)
     if (( ! $? )) && [[ ! -v AUR_DEBUG ]]; then
-        rm -rf "$tmp" "$var_tmp"
+        rm -rf "$tmp"
     fi
 }
 
@@ -227,7 +227,7 @@ cut -f2 --complement depends | sort -u >pkginfo
   # note: this uses pacman's copy of the repo (as used by makepkg -s)
   if (( provides_any )); then
       cut -f1 pkginfo | complement argv | aur repo-filter
-  else if (( provides )); then
+  elif (( provides )); then
       cut -f1 pkginfo | complement argv | aur repo-filter -d "$db_name"
   fi
 } >filter
