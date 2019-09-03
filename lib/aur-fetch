@@ -130,9 +130,7 @@ fi | while read -r pkg; do
         if (( rebase > 0 )) || {
                (( rebase < 0 )) && [[ $(git config --get --bool aurutils.rebase) == "true" ]]
            }; then
-            git reset --hard HEAD >&2
-
-            if ! git pull --rebase "${pull_args[@]}"; then
+            if ! git pull --rebase --autostash "${pull_args[@]}"; then
                 error '%s: %s: Failed to integrate changes' "$argv0" "$pkg"
                 exit 1
             fi
