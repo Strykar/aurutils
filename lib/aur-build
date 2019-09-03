@@ -267,8 +267,6 @@ while IFS= read -ru "$fd" path; do
         printf '%s\n' >&2 "Running custom command: ${build_cmd[*]}"
         env PKGDEST="$var_tmp" AUR_REPO="$db_name" AUR_DBROOT="$db_root" "${build_cmd[@]}"
     elif (( chroot )); then
-        # XXX: makechrootpkg arguments are appended to defaults (-c -n)
-        # defined in archbuild, instead of replaced
         printf '%s\n' >&2 "Running $chroot_prefix-$machine-build"
         env PKGDEST="$var_tmp" "$chroot_prefix"-"$machine"-build \
             "${archbuild_args[@]}" -- -d "$db_root" "${makechrootpkg_args[@]}"

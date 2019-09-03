@@ -194,8 +194,9 @@ fi
   fi
 } >argv
 
+# $1 pkgname $2 depends $3 pkgbase $4 pkgver
 if [[ -s argv ]]; then
-    # $1 pkgname $2 depends $3 pkgbase $4 pkgver
+    #shellcheck disable=SC2094
     xargs --arg-file=argv aur depends --table >depends
 else
     plain "there is nothing to do" >&2
