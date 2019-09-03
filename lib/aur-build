@@ -14,9 +14,10 @@ readonly machine
 
 # default arguments
 archbuild_args=()
-gpg_args=(--detach-sign --no-armor --batch)
+chroot_prefix=aur
+gpg_args=('--detach-sign' '--no-armor' '--batch')
 makechrootpkg_args=()
-makepkg_args=(--clean --syncdeps)
+makepkg_args=('--clean' '--syncdeps')
 repo_add_args=()
 
 # default options
@@ -70,7 +71,7 @@ fi
 ## option parsing
 opt_short='a:B:d:D:r:AcfLnNRXsv'
 opt_long=('arg-file:' 'chroot' 'database:' 'force' 'root:' 'sign'
-          'verify' 'directory:' 'no-sync' 'pacman-conf:' 'results:'
+          'verify' 'directory:' 'no-sync' 'pacman-conf:' 'results:' 'prefix:'
           'makepkg-conf:' 'remove' 'build-command:' 'pkgver' 'recreate')
 opt_hidden=('dump-options')
 
@@ -85,19 +86,22 @@ while true; do
         -a|--arg-file)      shift; queue=$1 ;;
         -B|--build-command) shift; build_cmd+=("$1") ;;
         -d|--database)      shift; db_name=$1 ;;
+        --root)             shift; db_root=$1 ;;
         -D|--directory)     shift; archbuild_args+=(-r "$1") ;;
+        --prefix)           shift; chroot_prefix=$1 ;;
+        --recreate)         archbuild_args+=(-c) ;;
         -c|--chroot)        chroot=1 ;;
         -f|--force)         overwrite=1 ;;
         -N|--no-sync)       no_sync=1 ;;
         -v|--verify)        repo_add_args+=(-v) ;;
         -R|--remove)        repo_add_args+=(-R) ;;
-        -s|--sign)          sign_pkg=1; repo_add_args+=(-s) ;;
+        -s|--sign)          sign_pkg=1
+                            repo_add_args+=(-s) ;;
         --pacman-conf)      shift; pacman_conf=$1 ;;
         --makepkg-conf)     shift; makepkg_conf=$1 ;;
         --results)          shift; results_file=$1 ;;
-        --root)             shift; db_root=$1 ;;
-        --recreate)         archbuild_args+=(-c) ;;
-        --pkgver)           run_pkgver=1; makepkg_args+=(--holdver) ;;
+        --pkgver)           run_pkgver=1
+                            makepkg_args+=(--holdver) ;;
         # expose some common makepkg options (cf. aur-sync)
         -r|--rmdeps)        makepkg_args+=(--rmdeps) ;;
         -n|--noconfirm)     makepkg_args+=(--noconfirm) ;;
@@ -152,7 +156,7 @@ case $db_name in
         esac ;;
 esac
 
-# resolve symbolic link
+# resolve symbolic link to database
 if ! db_path=$(readlink -e -- "$db_path"); then
     error '%s: %s: no such file or directory' "$argv0" "$db_path"
     exit 2
@@ -163,16 +167,26 @@ if ! [[ -w $db_path ]]; then
     exit 13
 fi
 
-# provisions for symbolic links to /usr/bin/archbuild (#591)
+# Provisions for symbolic links to /usr/bin/archbuild. Because archbuild
+# only allows to pass bind mounts to makechrootpkg, and not arch-nspawn,
+# the below relies on the implicit mounting of file:// repositories
+# by arch-nspawn in devtools>=20190821. (#591)
 if (( chroot )); then
-    if ! [[ -x /usr/bin/$db_name-$machine-build ]]; then
-        error '%s: archbuild is unavailable for repository %s' "$argv0" "$db_name"
+    if [[ -x /usr/bin/archbuild ]]; then
+        ln -s /usr/bin/archbuild "$tmp"/"$chroot_prefix"-"$machine"-build
+    else
+        error '%s: /usr/bin/archbuild: permission denied' "$argv0"
         exit 1
     fi
 
-    if ! [[ -e /usr/share/devtools/pacman-$db_name.conf ]]; then
-        error '%s: pacman-%s.conf: no such file or directory' "$argv0" "$db_name"
+    chroot_pacman_conf=/usr/share/devtools/pacman-$chroot_prefix.conf
+
+    if ! [[ -e $chroot_pacman_conf ]]; then
+        error '%s: pacman-%s.conf: no such file or directory' "$argv0" "$chroot_prefix"
         exit 2
+    elif ! pacman-conf --config="$chroot_pacman_conf" --repo="$db_name" >/dev/null; then
+        error '%s: pacman-%s.conf: local repository not configured' "$argv0"
+        exit 1
     fi
 fi
 
@@ -223,7 +237,7 @@ unset PKGDEST
 
   # PKGDEST defined here is NOT exported to the build environment.
   # This is not a concern for container builds, as makechrootpkg
-  # already has a similar mechanism. (#498)
+  # already has a similar mechanism to define PKGDEST. (#498)
   printf "PKGDEST='%s'\\n" "$var_tmp"
 } >"$tmp"/makepkg.conf
 
@@ -236,7 +250,7 @@ while IFS= read -ru "$fd" path; do
         makepkg --noprepare -od --ignorearch
     fi
 
-    if ! (( overwrite )); then
+    if (( ! overwrite )); then
         unset mark
 
         while IFS= read -r; do
@@ -251,15 +265,15 @@ while IFS= read -ru "$fd" path; do
         fi
     fi
 
-    # XXX: makechrootpkg arguments are _appended_ to defaults (-c -n)
-    # defined in extra-x86_64-build
     if [[ -v build_cmd ]]; then
         printf '%s\n' >&2 "Running custom command: ${build_cmd[*]}"
         env PKGDEST="$var_tmp" AUR_REPO="$db_name" AUR_DBROOT="$db_root" "${build_cmd[@]}"
     elif (( chroot )); then
-        printf '%s\n' >&2 "Running $db_name-$machine-build"
-        env PKGDEST="$var_tmp" "$db_name"-"$machine"-build "${archbuild_args[@]}" \
-            -- -d "$db_root" "${makechrootpkg_args[@]}"
+        # XXX: makechrootpkg arguments are _appended_ to defaults (-c -n)
+        # defined in extra-x86_64-build
+        printf '%s\n' >&2 "Running $chroot_prefix-$machine-build"
+        env PKGDEST="$var_tmp" "$tmp"/"$chroot_prefix"-"$machine"-build \
+            "${archbuild_args[@]}" -- -d "$db_root" "${makechrootpkg_args[@]}"
     else
         printf '%s\n' >&2 "Running makepkg ${makepkg_args[*]}"
         makepkg --config "$tmp"/makepkg.conf "${makepkg_args[@]}"
