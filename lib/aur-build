@@ -83,30 +83,35 @@ set -- "${OPTRET[@]}"
 unset queue db_name db_path db_root build_cmd makepkg_conf pacman_conf results_file
 while true; do
     case "$1" in
+        # build options
         -a|--arg-file)      shift; queue=$1 ;;
         -B|--build-command) shift; build_cmd+=("$1") ;;
+        --makepkg-conf)     shift; makepkg_conf=$1 ;;
+        -f|--force)         overwrite=1 ;;
+        # database options
         -d|--database)      shift; db_name=$1 ;;
         --root)             shift; db_root=$1 ;;
+        --pacman-conf)      shift; pacman_conf=$1 ;;
+        -N|--no-sync)       no_sync=1 ;;
+        # chroot options
         -D|--directory)     shift; archbuild_args+=(-r "$1") ;;
         --prefix)           shift; chroot_prefix=$1 ;;
-        --recreate)         archbuild_args+=(-c) ;;
         -c|--chroot)        chroot=1 ;;
-        -f|--force)         overwrite=1 ;;
-        -N|--no-sync)       no_sync=1 ;;
+        --recreate)         archbuild_args+=(-c) ;;
+        # common repo-add options
         -v|--verify)        repo_add_args+=(-v) ;;
         -R|--remove)        repo_add_args+=(-R) ;;
         -s|--sign)          sign_pkg=1
                             repo_add_args+=(-s) ;;
-        --pacman-conf)      shift; pacman_conf=$1 ;;
-        --makepkg-conf)     shift; makepkg_conf=$1 ;;
-        --results)          shift; results_file=$1 ;;
-        --pkgver)           run_pkgver=1
-                            makepkg_args+=(--holdver) ;;
-        # expose some common makepkg options (cf. aur-sync)
+        # common makepkg options (cf. aur-sync)
         -r|--rmdeps)        makepkg_args+=(--rmdeps) ;;
         -n|--noconfirm)     makepkg_args+=(--noconfirm) ;;
         -A|--ignorearch)    makepkg_args+=(--ignorearch) ;;
         -L|--log)           makepkg_args+=(--log) ;;
+        # other options
+        --pkgver)           run_pkgver=1
+                            makepkg_args+=(--holdver) ;;
+        --results)          shift; results_file=$1 ;;
         --dump-options)
             printf -- '--%s\n' "${opt_long[@]}"
             printf -- '%s' "${opt_short}" | sed 's/.:\?/-&\n/g'
@@ -122,7 +127,8 @@ var_tmp=$(mktemp -d "${TMPDIR:-/var/tmp}/$argv0".XXXXXXXX)
 trap 'trap_exit' EXIT
 trap 'exit' INT
 
-# reset default makechrootpkg arguments
+# makechrootpkg arguments are always appended to archbuild defaults
+# (-cn), instead of replaced as with makepkg defaults (-cs).
 if (( $# )); then
     if (( chroot )); then
         makechrootpkg_args=("$@")
@@ -131,7 +137,7 @@ if (( $# )); then
     fi
 fi
 
-# assign environment variables
+# Assign environment variables (#443)
 : "${db_name=$AUR_REPO}"
 : "${db_root=$AUR_DBROOT}"
 
@@ -156,7 +162,7 @@ case $db_name in
         esac ;;
 esac
 
-# resolve symbolic link to database
+# Resolve symbolic link to database
 if ! db_path=$(readlink -e -- "$db_path"); then
     error '%s: %s: no such file or directory' "$argv0" "$db_path"
     exit 2
@@ -194,7 +200,7 @@ else
     exec {fd}< <(printf '\n')
 fi
 
-# write successfully built packages to file (#437)
+# Write successfully built packages to file (#437)
 if [[ -v results_file ]]; then
     if [[ -w $results_file ]]; then
         results=1
@@ -221,7 +227,7 @@ else
     fi
 fi
 
-# Configuration for host builds.
+# Configuration for host builds
 conf_single "${pacman_conf:-/etc/pacman.conf}" "$db_name" >"$tmp"/custom.conf
 
 # PKGDEST is defined below through makepkg.conf (#513)
@@ -235,16 +241,16 @@ unset PKGDEST
 
   # PKGDEST defined here is NOT exported to the build environment.
   # This is not a concern for container builds, as makechrootpkg
-  # already has a similar mechanism to define PKGDEST. (#498)
+  # already has a similar mechanism for defining PKGDEST. (#498)
   printf "PKGDEST='%s'\\n" "$var_tmp"
 } >"$tmp"/makepkg.conf
 
 while IFS= read -ru "$fd" path; do
     cd_safe "$startdir/$path"
 
-    # run pkgver before --packagelist (#500)
+    # Run pkgver before --packagelist (#500)
     if (( run_pkgver )); then
-        # ignore architecture in pkgver() function (#536)
+        # Ignore architecture in pkgver() function (#536)
         makepkg --noprepare -od --ignorearch
     fi
 
@@ -296,10 +302,10 @@ while IFS= read -ru "$fd" path; do
         fi
     done
 
-    # move build products (relative paths)
+    # Move build products (relative paths)
     mv -f "${pkglist[@]}" "${siglist[@]}" "$db_root"
 
-    # update database
+    # Update database
     cd_safe "$db_root"
     LANG=C repo-add "${repo_add_args[@]}" "$db_path" "${pkglist[@]}"
 
