@@ -305,7 +305,7 @@ if (( view )); then
 fi
 
 if (( build )); then
-    build_args+=(-a "$tmp"/queue -d "$db_name" -r "$db_root")
+    build_args+=(-a "$tmp"/queue -d "$db_name" --root "$db_root")
 
     if (( chroot )); then
         aur build "${build_args[@]}" -- "${makechrootpkg_args[@]}" \
