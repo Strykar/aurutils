@@ -68,6 +68,13 @@ if [[ ! -v NO_COLOR ]] && [[ ! -o xtrace ]]; then
     [[ -t 2 ]] && colorize
 fi
 
+# mollyguard for makepkg
+if (( UID == 0 )) && [[ ! -v AUR_ASROOT ]]; then
+    warning 'aur-%s is not meant to be run as root.' "$argv0"
+    warning 'To proceed anyway, set the %s variable.' 'AUR_ASROOT'
+    exit 1
+fi
+
 ## option parsing
 opt_short='a:B:d:D:r:AcfLnNRXsv'
 opt_long=('arg-file:' 'chroot' 'database:' 'force' 'root:' 'sign'
