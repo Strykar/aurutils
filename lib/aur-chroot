@@ -1,5 +1,6 @@
 #!/bin/bash
 # aur-chroot - build packages with systemd-nspawn
+[[ -v AUR_DEBUG ]] && set -o xtrace
 set -o errexit
 readonly argv0=chroot
 readonly PATH=/bin:/usr/bin
@@ -34,16 +35,11 @@ trap_exit() {
 }
 
 usage() {
-    plain 'usage: %s [-d repo] [-CDM path] -- <makechrootpkg args>' "$argv0" >&2
+    printf >&2 'usage: %s [-d repo] [-CDM path] -- <makechrootpkg args>\n' "$argv0"
     exit 1
 }
 
-source /usr/share/makepkg/util/message.sh
 source /usr/share/makepkg/util/parseopts.sh
-
-if [[ ( -t 1 && -t 2 && ! -o xtrace && $AUR_COLOR == auto ) || $AUR_COLOR == always ]] ; then
-    colorize
-fi
 
 opt_short='d:C:D:M:'
 opt_long=('database:' 'directory:' 'pacman-conf:' 'makepkg-conf:' 'host-conf:' 'no-build' 'no-prepare')

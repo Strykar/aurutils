@@ -1,4 +1,5 @@
 #!/bin/bash
+[[ -v AUR_DEBUG ]] && set -o xtrace
 readonly argv0=vercmp-devel
 readonly XDG_CACHE_HOME=${XDG_CACHE_HOME:-$HOME/.cache}
 readonly AURDEST=${AURDEST:-$XDG_CACHE_HOME/aurutils/sync}
