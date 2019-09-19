@@ -42,7 +42,7 @@ if ! parseopts "$opt_short" "${opt_long[@]}" "${opt_hidden[@]}" -- "$@"; then
 fi
 set -- "${OPTRET[@]}"
 
-makepkg_args=('--nobuild' '--nodeps' '--skipinteg' '--log')
+makepkg_args=('--nobuild' '--nodeps' '--skipinteg')
 num_procs=$(("$(nproc)" + 2))
 
 while true; do
