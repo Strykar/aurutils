@@ -196,7 +196,7 @@ if (( chroot )); then
         error '%s: pacman-%s.conf: no such file or directory' "$argv0" "$chroot_prefix"
         exit 2
     elif ! pacman-conf --config="$chroot_pacman_conf" --repo="$db_name" >/dev/null; then
-        error '%s: pacman-%s.conf: local repository %s not configured' "$argv0" "$db_name"
+        error '%s: %s: local repository %s not configured' "$argv0" "$chroot_pacman_conf" "$db_name"
         exit 1
     fi
 fi
