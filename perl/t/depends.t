@@ -12,8 +12,9 @@ AUR::Depends->import(qw(graph prune tsort));
 # --- Helper: build $results hash from a list of packages ---
 # Each entry: { Name => ..., Version => ..., Provides => [...] }
 sub make_results {
+    my @packages = @_;
     my %results;
-    for my $pkg (@_) {
+    for my $pkg (@packages) {
         $results{$pkg->{Name}} = $pkg;
     }
     return %results;
