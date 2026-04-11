@@ -2,12 +2,14 @@
 use strict;
 use warnings;
 use v5.20;
+use Carp;
+use File::Temp qw(tempfile);
 use Test::More;
 
 # Check if module can be imported
 require_ok "AUR::Depends";
 
-AUR::Depends->import(qw(graph prune tsort));
+AUR::Depends->import(qw(recurse graph prune tsort));
 
 # --- Helper: build $results hash from a list of packages ---
 # Each entry: { Name => ..., Version => ..., Provides => [...] }
@@ -353,6 +355,313 @@ subtest 'tsort: BFS mode' => sub {
 
     is($sorted[0], 'D', 'D first in BFS (only node with no predecessors)');
     is($sorted[-1], 'A', 'A last in BFS (leaf)');
+};
+
+# =========================================================
+# 18. recurse(): single target, no dependencies
+# =========================================================
+subtest 'recurse: single target, no deps' => sub {
+    my $callback = sub {
+        my ($deps) = @_;
+        my %db = (
+            'pkg-a' => {
+                Name    => 'pkg-a',
+                Version => '1.0-1',
+            },
+        );
+        return map { $db{$_} } grep { defined $db{$_} } @{$deps};
+    };
+
+    my ($results, $pkgdeps, $pkgmap) = recurse(
+        ['pkg-a'], ['Depends'], $callback
+    );
+
+    ok(defined $results->{'pkg-a'}, 'pkg-a in results');
+    is($results->{'pkg-a'}{'Version'}, '1.0-1', 'correct version');
+
+    # Self edge seeded
+    is($pkgdeps->{'pkg-a'}[0][0], 'pkg-a', 'self dep spec');
+    is($pkgdeps->{'pkg-a'}[0][1], 'Self',  'self dep type');
+
+    is(scalar keys %{$pkgmap}, 0, 'no providers');
+};
+
+# =========================================================
+# 19. recurse(): multi-level dependency resolution
+# =========================================================
+subtest 'recurse: multi-level A -> B -> C' => sub {
+    my $callback = sub {
+        my ($deps) = @_;
+        my %db = (
+            'A' => {
+                Name     => 'A',
+                Version  => '1.0-1',
+                Depends  => ['B'],
+            },
+            'B' => {
+                Name     => 'B',
+                Version  => '2.0-1',
+                Depends  => ['C'],
+            },
+            'C' => {
+                Name     => 'C',
+                Version  => '3.0-1',
+            },
+        );
+        return map { $db{$_} } grep { defined $db{$_} } @{$deps};
+    };
+
+    my ($results, $pkgdeps, $pkgmap) = recurse(
+        ['A'], ['Depends'], $callback
+    );
+
+    # All three packages resolved
+    ok(defined $results->{'A'}, 'A in results');
+    ok(defined $results->{'B'}, 'B in results');
+    ok(defined $results->{'C'}, 'C in results');
+
+    # A has Self + B dep
+    is(scalar @{$pkgdeps->{'A'}}, 2, 'A has 2 pkgdeps entries');
+    is($pkgdeps->{'A'}[1][0], 'B',       'A depends on B');
+    is($pkgdeps->{'A'}[1][1], 'Depends', 'dep type is Depends');
+
+    # B has B dep (from callback) + C dep
+    is($pkgdeps->{'B'}[0][0], 'C',       'B depends on C');
+    is($pkgdeps->{'B'}[0][1], 'Depends', 'dep type is Depends');
+};
+
+# =========================================================
+# 20. recurse(): duplicate dependencies not re-queried
+# =========================================================
+subtest 'recurse: dedup - shared dep queried once' => sub {
+    my $call_count = 0;
+    my $callback = sub {
+        my ($deps) = @_;
+        $call_count++;
+        my %db = (
+            'X' => {
+                Name    => 'X',
+                Version => '1.0-1',
+                Depends => ['shared'],
+            },
+            'Y' => {
+                Name    => 'Y',
+                Version => '1.0-1',
+                Depends => ['shared'],
+            },
+            'shared' => {
+                Name    => 'shared',
+                Version => '1.0-1',
+            },
+        );
+        return map { $db{$_} } grep { defined $db{$_} } @{$deps};
+    };
+
+    my ($results, $pkgdeps, $pkgmap) = recurse(
+        ['X', 'Y'], ['Depends'], $callback
+    );
+
+    ok(defined $results->{'shared'}, 'shared in results');
+    # callback called twice: once for [X,Y], once for [shared]
+    is($call_count, 2, 'callback called exactly twice (no dup queries)');
+};
+
+# =========================================================
+# 21. recurse(): provides populates pkgmap
+# =========================================================
+subtest 'recurse: provides populate pkgmap' => sub {
+    my $callback = sub {
+        my ($deps) = @_;
+        my %db = (
+            'real-pkg' => {
+                Name     => 'real-pkg',
+                Version  => '2.0-1',
+                Provides => ['virtual-pkg=2.0'],
+            },
+        );
+        return map { $db{$_} } grep { defined $db{$_} } @{$deps};
+    };
+
+    my ($results, $pkgdeps, $pkgmap) = recurse(
+        ['real-pkg'], ['Depends'], $callback
+    );
+
+    ok(defined $pkgmap->{'virtual-pkg'}, 'virtual-pkg in pkgmap');
+    is($pkgmap->{'virtual-pkg'}[0], 'real-pkg', 'provider is real-pkg');
+    is($pkgmap->{'virtual-pkg'}[1], '2.0',      'provider version is 2.0');
+};
+
+# =========================================================
+# 22. recurse(): self-provide excluded from pkgmap
+# =========================================================
+subtest 'recurse: self-provide excluded from pkgmap' => sub {
+    my $callback = sub {
+        my ($deps) = @_;
+        my %db = (
+            'foo' => {
+                Name     => 'foo',
+                Version  => '1.0-1',
+                Provides => ['foo=1.0'],
+            },
+        );
+        return map { $db{$_} } grep { defined $db{$_} } @{$deps};
+    };
+
+    my ($results, $pkgdeps, $pkgmap) = recurse(
+        ['foo'], ['Depends'], $callback
+    );
+
+    ok(not(defined $pkgmap->{'foo'}),
+        'self-provide not added to pkgmap (line 102: $prov ne $name)');
+};
+
+# =========================================================
+# 23. recurse(): first provider wins
+# =========================================================
+subtest 'recurse: first provider takes precedence' => sub {
+    my $callback = sub {
+        my ($deps) = @_;
+        my %db = (
+            'first' => {
+                Name     => 'first',
+                Version  => '1.0-1',
+                Provides => ['virt=1.0'],
+            },
+            'second' => {
+                Name     => 'second',
+                Version  => '2.0-1',
+                Provides => ['virt=2.0'],
+            },
+        );
+        # Return in deterministic order: first before second
+        my @out;
+        for my $d (@{$deps}) {
+            push @out, $db{$d} if defined $db{$d};
+        }
+        return @out;
+    };
+
+    my ($results, $pkgdeps, $pkgmap) = recurse(
+        ['first', 'second'], ['Depends'], $callback
+    );
+
+    is($pkgmap->{'virt'}[0], 'first', 'first provider wins');
+};
+
+# =========================================================
+# 24. recurse(): multiple dep types filtered
+# =========================================================
+subtest 'recurse: dep type filtering' => sub {
+    my $callback = sub {
+        my ($deps) = @_;
+        my %db = (
+            'app' => {
+                Name          => 'app',
+                Version       => '1.0-1',
+                Depends       => ['libx'],
+                MakeDepends   => ['build-tool'],
+                CheckDepends  => ['test-fw'],
+            },
+            'libx'       => { Name => 'libx',       Version => '1.0-1' },
+            'build-tool' => { Name => 'build-tool',  Version => '1.0-1' },
+            'test-fw'    => { Name => 'test-fw',     Version => '1.0-1' },
+        );
+        return map { $db{$_} } grep { defined $db{$_} } @{$deps};
+    };
+
+    # Only request Depends - MakeDepends and CheckDepends should be ignored
+    my ($results, $pkgdeps, $pkgmap) = recurse(
+        ['app'], ['Depends'], $callback
+    );
+
+    ok(defined $results->{'libx'}, 'libx resolved (Depends)');
+    ok(not(defined $results->{'build-tool'}),
+        'build-tool not resolved (MakeDepends filtered out)');
+    ok(not(defined $results->{'test-fw'}),
+        'test-fw not resolved (CheckDepends filtered out)');
+};
+
+# =========================================================
+# 25. graph(): versioned dependency fails vercmp (verify=1)
+#     graph() calls exit() on failure, so we fork to test.
+# =========================================================
+subtest 'graph: versioned dep fails vercmp' => sub {
+    my $pid = fork();
+    croak "fork failed: $!" unless defined $pid;
+
+    if ($pid == 0) {
+        # Child: redirect stderr to /dev/null
+        open(STDERR, '>', '/dev/null') or croak "open /dev/null: $!";
+        my %results = make_results(
+            { Name => 'app',    Version => '1.0-1' },
+            { Name => 'libold', Version => '1.0-1' },
+        );
+        my %pkgdeps = make_pkgdeps(['app'], {
+            'app' => [['libold>=5.0', 'Depends']],
+        });
+        my %pkgmap;
+
+        # verify=1: vercmp(1.0, 5.0, >=) should fail
+        graph(\%results, \%pkgdeps, \%pkgmap, 1, 0);
+
+        # Should not reach here
+        exit(99);
+    }
+
+    waitpid($pid, 0);
+    my $exit_code = $? >> 8;
+    is($exit_code, 1, 'graph exits with EX_FAILURE on version mismatch');
+};
+
+# =========================================================
+# 26. tsort(): cycle detection
+#     tsort prints a warning but still returns the
+#     non-cyclic portion of the graph.
+# =========================================================
+subtest 'tsort: cycle detection' => sub {
+    # A -> B -> A (cycle), plus self-loops
+    my @input = ('A', 'A', 'A', 'B', 'B', 'B', 'B', 'A');
+    my @sorted;
+
+    # Capture stderr via tempfile
+    my ($tmp_fh, $tmp_fn) = tempfile(UNLINK => 1);
+    {
+        open(my $save, '>&', \*STDERR) or croak "dup stderr: $!";
+        open(STDERR, '>&', $tmp_fh)    or croak "redirect stderr: $!";
+        @sorted = tsort(0, \@input);
+        open(STDERR, '>&', $save)      or croak "restore stderr: $!";
+    }
+    seek($tmp_fh, 0, 0);
+    my $stderr = do { local $/ = undef; <$tmp_fh> };
+    close($tmp_fh);
+
+    like($stderr, qr/cycle detected/, 'cycle warning emitted');
+    # Neither A nor B can be output since both have remaining predecessors
+    is(scalar @sorted, 0, 'no nodes output for pure cycle');
+};
+
+# =========================================================
+# 27. tsort(): partial cycle (some nodes still sortable)
+# =========================================================
+subtest 'tsort: partial cycle with sortable nodes' => sub {
+    # C -> A -> B -> A (A-B cycle), C has no predecessors
+    my @input = ('C', 'C', 'C', 'A', 'A', 'B', 'B', 'A');
+    my @sorted;
+
+    my ($tmp_fh, $tmp_fn) = tempfile(UNLINK => 1);
+    {
+        open(my $save, '>&', \*STDERR) or croak "dup stderr: $!";
+        open(STDERR, '>&', $tmp_fh)    or croak "redirect stderr: $!";
+        @sorted = tsort(0, \@input);
+        open(STDERR, '>&', $save)      or croak "restore stderr: $!";
+    }
+    seek($tmp_fh, 0, 0);
+    my $stderr = do { local $/ = undef; <$tmp_fh> };
+    close($tmp_fh);
+
+    like($stderr, qr/cycle detected/, 'cycle warning for A-B cycle');
+    is(scalar @sorted, 1, 'only C is sortable');
+    is($sorted[0], 'C', 'C output before cycle');
 };
 
 done_testing();
