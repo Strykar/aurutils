@@ -182,11 +182,6 @@ subtest 'graph: self edge with provider redirection' => sub {
     # instead of the expected dag{foo}{foo} = 'Self'
     is($dag->{bar}{foo}, 'Self',
         'self edge redirected through provider (current behavior)');
-
-    # Ideally, requesting foo explicitly should anchor as foo -> foo
-    # regardless of providers. This test documents the current behavior.
-    # TODO: if self-anchoring is implemented, change this to:
-    #   is($dag->{foo}{foo}, 'Self', 'self edge stays anchored');
 };
 
 # =========================================================
